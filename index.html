@@ -3,201 +3,137 @@
 <head>
   <meta charset="UTF-8" />
   <title>Neo Air Hockey AI</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #000;
-      color: white;
-      font-family: 'Arial', sans-serif;
-      text-align: center;
-    }
-    canvas {
-      display: block;
-      margin: auto;
-      background: #111;
-      border: 4px solid white;
-      border-radius: 10px;
-    }
+    body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; background: #111; }
     #scoreboard {
       position: absolute;
       top: 10px;
-      width: 100%;
-      font-size: 20px;
-      font-weight: bold;
-    }
-    #timer {
-      font-size: 18px;
-      margin-top: 4px;
-    }
-    #restartBtn {
-      position: absolute;
-      bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      padding: 10px 20px;
-      font-size: 16px;
-      background: #333;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    #music {
-      display: none;
+      font-size: 24px;
+      color: #fff;
+      font-family: Arial, sans-serif;
     }
   </style>
 </head>
 <body>
+  <div id="scoreboard">Player 0 : 0 AI</div>
+  <canvas id="gameCanvas" width="800" height="500"></canvas>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
 
-<div id="scoreboard">
-  Player: <span id="playerScore">0</span> | AI: <span id="aiScore">0</span>
-  <div id="timer">Time Left: <span id="timeLeft">60</span>s</div>
-</div>
+    let playerScore = 0, aiScore = 0;
+    const paddle = { x: 50, y: canvas.height / 2 - 40, w: 15, h: 80 };
+    const aiPaddle = { x: canvas.width - 65, y: canvas.height / 2 - 40, w: 15, h: 80 };
+    const puck = { x: canvas.width / 2, y: canvas.height / 2, r: 12, dx: 5, dy: 3 };
 
-<canvas id="gameCanvas" width="360" height="640"></canvas>
-<button id="restartBtn">🔄 Restart</button>
-<audio id="music" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" autoplay loop></audio>
+    const hitSound = new Audio("https://cdn.pixabay.com/audio/2022/10/30/audio_ffa24b2b6b.mp3");
+    const goalSound = new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_492ff5b92d.mp3");
 
-<script>
-  const canvas = document.getElementById("gameCanvas");
-  const ctx = canvas.getContext("2d");
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  let player = { x: canvas.width / 2, y: canvas.height - 50, radius: 30 };
-  let ai = { x: canvas.width / 2, y: 50, radius: 30 };
-  let puck = { x: canvas.width / 2, y: canvas.height / 2, radius: 15, dx: 3, dy: 3 };
+      // Background elements
+      ctx.strokeStyle = "#444";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
 
-  let playerScore = 0;
-  let aiScore = 0;
-  let gameTime = 60;
-  let gameRunning = true;
+      // Draw paddles and puck
+      ctx.fillStyle = "#0f0";
+      ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
 
-  const playerScoreEl = document.getElementById("playerScore");
-  const aiScoreEl = document.getElementById("aiScore");
-  const timerEl = document.getElementById("timeLeft");
+      ctx.fillStyle = "#f00";
+      ctx.fillRect(aiPaddle.x, aiPaddle.y, aiPaddle.w, aiPaddle.h);
 
-  function drawCircle(x, y, radius, color) {
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.closePath();
-  }
+      ctx.beginPath();
+      ctx.arc(puck.x, puck.y, puck.r, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.closePath();
+    }
 
-  function drawCenterLine() {
-    ctx.strokeStyle = "#555";
-    ctx.setLineDash([5, 15]);
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height / 2);
-    ctx.lineTo(canvas.width, canvas.height / 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+    function update() {
+      puck.x += puck.dx;
+      puck.y += puck.dy;
 
-  function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Bounce off top and bottom
+      if (puck.y - puck.r < 0 || puck.y + puck.r > canvas.height) {
+        puck.dy *= -1;
+      }
 
-    drawCenterLine();
+      // Player paddle collision
+      if (
+        puck.x - puck.r < paddle.x + paddle.w &&
+        puck.y > paddle.y &&
+        puck.y < paddle.y + paddle.h
+      ) {
+        puck.dx *= -1;
+        puck.x = paddle.x + paddle.w + puck.r;
+        hitSound.play();
+      }
 
-    // Draw player and AI paddles
-    drawCircle(player.x, player.y, player.radius, "#0f0");
-    drawCircle(ai.x, ai.y, ai.radius, "#f00");
+      // AI paddle collision
+      if (
+        puck.x + puck.r > aiPaddle.x &&
+        puck.y > aiPaddle.y &&
+        puck.y < aiPaddle.y + aiPaddle.h
+      ) {
+        puck.dx *= -1;
+        puck.x = aiPaddle.x - puck.r;
+        hitSound.play();
+      }
 
-    // Draw puck
-    drawCircle(puck.x, puck.y, puck.radius, "white");
+      // Scoring
+      if (puck.x < 0) {
+        aiScore++;
+        reset();
+        goalSound.play();
+      } else if (puck.x > canvas.width) {
+        playerScore++;
+        reset();
+        goalSound.play();
+      }
 
-    if (!gameRunning) return;
+      document.getElementById("scoreboard").innerText = `Player ${playerScore} : ${aiScore}`;
 
-    // Update puck position
-    puck.x += puck.dx;
-    puck.y += puck.dy;
+      // AI movement
+      let center = aiPaddle.y + aiPaddle.h / 2;
+      if (center < puck.y - 15) aiPaddle.y += 4;
+      else if (center > puck.y + 15) aiPaddle.y -= 4;
 
-    // Wall collision
-    if (puck.x - puck.radius < 0 || puck.x + puck.radius > canvas.width) {
+      // Keep AI paddle on screen
+      if (aiPaddle.y < 0) aiPaddle.y = 0;
+      if (aiPaddle.y + aiPaddle.h > canvas.height) aiPaddle.y = canvas.height - aiPaddle.h;
+    }
+
+    function reset() {
+      puck.x = canvas.width / 2;
+      puck.y = canvas.height / 2;
       puck.dx *= -1;
     }
 
-    // Goal logic
-    if (puck.y - puck.radius < 0) {
-      playerScore++;
-      resetPuck();
-    } else if (puck.y + puck.radius > canvas.height) {
-      aiScore++;
-      resetPuck();
+    canvas.addEventListener("mousemove", (e) => {
+      let rect = canvas.getBoundingClientRect();
+      let mouseY = e.clientY - rect.top;
+      paddle.y = mouseY - paddle.h / 2;
+
+      // Lock paddle to left side and inside screen
+      if (paddle.y < 0) paddle.y = 0;
+      if (paddle.y + paddle.h > canvas.height) paddle.y = canvas.height - paddle.h;
+    });
+
+    function gameLoop() {
+      draw();
+      update();
+      requestAnimationFrame(gameLoop);
     }
 
-    // Update AI position (harder AI)
-    if (puck.y < canvas.height / 2) {
-      if (puck.x < ai.x - 5) ai.x -= 4;
-      else if (puck.x > ai.x + 5) ai.x += 4;
-    }
-
-    // Paddle collisions
-    handleCollision(player);
-    handleCollision(ai);
-
-    // Update scoreboard
-    playerScoreEl.textContent = playerScore;
-    aiScoreEl.textContent = aiScore;
-
-    requestAnimationFrame(draw);
-  }
-
-  function handleCollision(paddle) {
-    let dx = puck.x - paddle.x;
-    let dy = puck.y - paddle.y;
-    let distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance < puck.radius + paddle.radius) {
-      let angle = Math.atan2(dy, dx);
-      puck.dx = Math.cos(angle) * 4;
-      puck.dy = Math.sin(angle) * 4;
-    }
-  }
-
-  function resetPuck() {
-    puck.x = canvas.width / 2;
-    puck.y = canvas.height / 2;
-    puck.dx = (Math.random() > 0.5 ? 3 : -3);
-    puck.dy = (Math.random() > 0.5 ? 3 : -3);
-  }
-
-  canvas.addEventListener("touchmove", function (e) {
-    const touch = e.touches[0];
-    let rect = canvas.getBoundingClientRect();
-    let x = touch.clientX - rect.left;
-    let y = touch.clientY - rect.top;
-    if (y > canvas.height / 2) {
-      player.x = x;
-      player.y = y;
-    }
-  });
-
-  document.getElementById("restartBtn").onclick = () => {
-    playerScore = 0;
-    aiScore = 0;
-    gameTime = 60;
-    gameRunning = true;
-    resetPuck();
-  };
-
-  // Timer
-  setInterval(() => {
-    if (!gameRunning) return;
-    gameTime--;
-    timerEl.textContent = gameTime;
-    if (gameTime <= 0) {
-      gameRunning = false;
-      alert(playerScore > aiScore ? "🎉 You Win!" : "😢 AI Wins!");
-    }
-  }, 1000);
-
-  // Start background music
-  document.getElementById("music").play();
-
-  draw();
-</script>
-
+    gameLoop();
+  </script>
 </body>
 </html>
