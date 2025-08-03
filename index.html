@@ -2,160 +2,255 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Neo Air Hockey</title>
+  <title>2D Air Hockey Game</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
-      overflow: hidden;
       background: #000;
+      overflow: hidden;
       font-family: 'Segoe UI', sans-serif;
+      color: #fff;
     }
     canvas {
       display: block;
-      background: radial-gradient(circle at center, #111 0%, #000 100%);
+      margin: auto;
+      background: #111;
+      border: 2px solid #444;
     }
-    #scoreboard {
+    #scoreBoard, #timer {
       position: absolute;
-      top: 15px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 24px;
-      color: white;
-      text-shadow: 0 0 5px cyan;
+      top: 10px;
+      left: 10px;
+      font-size: 18px;
       z-index: 2;
+    }
+    #timer {
+      left: auto;
+      right: 10px;
+    }
+    #settingsMenu {
+      display: none;
+      position: absolute;
+      top: 60px;
+      left: 10px;
+      background: #222;
+      border: 1px solid #555;
+      padding: 10px;
+      z-index: 2;
+    }
+    #controls {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      z-index: 2;
+    }
+    #controls button {
+      margin-right: 10px;
+      padding: 5px 10px;
+      background: #444;
+      color: #fff;
+      border: none;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <div id="scoreboard">Player 0 : 0 AI</div>
-  <canvas id="gameCanvas" width="800" height="500"></canvas>
+  <canvas id="gameCanvas" width="600" height="800"></canvas>
+  <div id="scoreBoard">Score: 0 | High Score: 0</div>
+  <div id="timer">⏱ Time: 60</div>
+
+  <!-- Settings Menu -->
+  <div id="settingsMenu">
+    <h3>Settings ⚙</h3>
+    <label><input type="checkbox" id="soundToggle" checked> Sound On</label><br>
+    <button onclick="closeSettings()">Close</button>
+  </div>
+
+  <!-- Controls -->
+  <div id="controls">
+    <button onclick="togglePause()">⏯ Pause/Resume</button>
+    <button onclick="restartGame()">🔄 Restart</button>
+    <button onclick="openSettings()">⚙ Settings</button>
+    <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
+  </div>
+
+  <!-- Sound Effects -->
+  <audio id="goalSound" src="https://www.soundjay.com/button/beep-07.wav"></audio>
+  <audio id="hitSound" src="https://www.soundjay.com/button/button-3.wav"></audio>
 
   <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreBoard = document.getElementById('scoreBoard');
+    const goalSound = document.getElementById('goalSound');
+    const hitSound = document.getElementById('hitSound');
+    let width = canvas.width;
+    let height = canvas.height;
 
-    // Sounds
-    const hitSound = new Audio("https://cdn.pixabay.com/audio/2022/10/30/audio_ffa24b2b6b.mp3");
-    const goalSound = new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_492ff5b92d.mp3");
+    let player = { x: width / 2, y: height - 60, r: 30 };
+    let ai = { x: width / 2, y: 60, r: 30 };
+    let puck = { x: width / 2, y: height / 2, dx: 3, dy: 3, r: 15 };
 
-    // Game objects
-    let playerScore = 0, aiScore = 0;
-    const paddle = { x: 40, y: canvas.height / 2 - 40, w: 15, h: 80, color: 'cyan' };
-    const aiPaddle = { x: canvas.width - 55, y: canvas.height / 2 - 40, w: 15, h: 80, color: 'red' };
-    const puck = { x: canvas.width / 2, y: canvas.height / 2, r: 12, dx: 5, dy: 3, color: 'white' };
+    let score = 0;
+    let highScore = localStorage.getItem("highScore") || 0;
+    let paused = false;
+    let timeLeft = 60;
+    let timerInterval;
+    let aiSpeed = 0.1;
+    let speedMultiplier = 1;
+    let level = 1;
 
-    function drawPaddle(p) {
-      ctx.fillStyle = p.color;
-      ctx.shadowBlur = 15;
-      ctx.shadowColor = p.color;
-      ctx.fillRect(p.x, p.y, p.w, p.h);
-      ctx.shadowBlur = 0;
-    }
+    canvas.addEventListener("mousemove", e => {
+      if (paused) return;
+      const rect = canvas.getBoundingClientRect();
+      player.x = e.clientX - rect.left;
+      player.y = e.clientY - rect.top;
+    });
 
-    function drawPuck() {
+    function drawCircle(x, y, r, color, border = 0) {
       ctx.beginPath();
-      ctx.arc(puck.x, puck.y, puck.r, 0, Math.PI * 2);
-      ctx.fillStyle = puck.color;
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = 'white';
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
       ctx.fill();
-      ctx.shadowBlur = 0;
+      if (border > 0) {
+        ctx.lineWidth = border;
+        ctx.strokeStyle = "#fff";
+        ctx.stroke();
+      }
+      ctx.closePath();
     }
 
     function drawCenterLine() {
-      ctx.strokeStyle = "#444";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([10, 10]);
       ctx.beginPath();
-      ctx.moveTo(canvas.width / 2, 0);
-      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.setLineDash([10, 10]);
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.strokeStyle = "#444";
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.closePath();
+    }
+
+    function resetPuck() {
+      puck.x = width / 2;
+      puck.y = height / 2;
+      puck.dx = (Math.random() < 0.5 ? -1 : 1) * 3;
+      puck.dy = (Math.random() < 0.5 ? -1 : 1) * 3;
+    }
+
+    function openSettings() {
+      document.getElementById("settingsMenu").style.display = "block";
+    }
+
+    function closeSettings() {
+      document.getElementById("settingsMenu").style.display = "none";
+    }
+
+    function togglePause() {
+      paused = !paused;
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    function updateAIBehavior() {
+      aiSpeed = 0.05 + level * 0.05;
+    }
+
+    function setLevel(val) {
+      level = parseInt(val);
+      speedMultiplier = 1 + (level - 1) * 0.5;
+      updateAIBehavior();
     }
 
     function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (paused) {
+        requestAnimationFrame(draw);
+        return;
+      }
+
+      ctx.clearRect(0, 0, width, height);
       drawCenterLine();
-      drawPaddle(paddle);
-      drawPaddle(aiPaddle);
-      drawPuck();
+
+      puck.x += puck.dx * speedMultiplier;
+      puck.y += puck.dy * speedMultiplier;
+
+      if (puck.x < puck.r || puck.x > width - puck.r) puck.dx *= -1;
+
+      if (puck.y < puck.r || puck.y > height - puck.r) {
+        if (puck.y < height / 2) {
+          score++;
+          if (document.getElementById("soundToggle").checked) goalSound.play();
+        } else {
+          score = 0;
+        }
+
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem("highScore", highScore);
+        }
+
+        resetPuck();
+      }
+
+      if (puck.y < height / 2) {
+        ai.x += (puck.x - ai.x) * aiSpeed;
+      }
+
+      [player, ai].forEach(paddle => {
+        let dx = puck.x - paddle.x;
+        let dy = puck.y - paddle.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < puck.r + paddle.r) {
+          let angle = Math.atan2(dy, dx);
+          puck.dx = Math.cos(angle) * 4;
+          puck.dy = Math.sin(angle) * 4;
+          if (document.getElementById("soundToggle").checked) hitSound.play();
+        }
+      });
+
+      drawCircle(puck.x, puck.y, puck.r, "white", 10);
+      drawCircle(player.x, player.y, player.r, "blue", 20);
+      drawCircle(ai.x, ai.y, ai.r, "red", 20);
+
+      scoreBoard.innerHTML = `Score: ${score} | High Score: ${highScore}`;
+      requestAnimationFrame(draw);
     }
 
-    function update() {
-      puck.x += puck.dx;
-      puck.y += puck.dy;
+    function startTimer() {
+      timeLeft = 60;
+      document.getElementById("timer").innerText = `⏱ Time: ${timeLeft}`;
+      if (timerInterval) clearInterval(timerInterval);
 
-      // Bounce off top and bottom
-      if (puck.y - puck.r < 0 || puck.y + puck.r > canvas.height) {
-        puck.dy *= -1;
-      }
-
-      // Player paddle collision
-      if (
-        puck.x - puck.r < paddle.x + paddle.w &&
-        puck.y > paddle.y &&
-        puck.y < paddle.y + paddle.h
-      ) {
-        puck.dx *= -1;
-        puck.x = paddle.x + paddle.w + puck.r;
-        hitSound.play();
-      }
-
-      // AI paddle collision
-      if (
-        puck.x + puck.r > aiPaddle.x &&
-        puck.y > aiPaddle.y &&
-        puck.y < aiPaddle.y + aiPaddle.h
-      ) {
-        puck.dx *= -1;
-        puck.x = aiPaddle.x - puck.r;
-        hitSound.play();
-      }
-
-      // Score detection
-      if (puck.x < 0) {
-        aiScore++;
-        goalSound.play();
-        reset();
-      } else if (puck.x > canvas.width) {
-        playerScore++;
-        goalSound.play();
-        reset();
-      }
-
-      document.getElementById("scoreboard").innerText = `Player ${playerScore} : ${aiScore}`;
-
-      // AI movement
-      let center = aiPaddle.y + aiPaddle.h / 2;
-      if (center < puck.y - 15) aiPaddle.y += 3;
-      else if (center > puck.y + 15) aiPaddle.y -= 3;
-
-      aiPaddle.y = Math.max(0, Math.min(canvas.height - aiPaddle.h, aiPaddle.y));
+      timerInterval = setInterval(() => {
+        if (!paused) {
+          timeLeft--;
+          document.getElementById("timer").innerText = `⏱ Time: ${timeLeft}`;
+          if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            alert("⏰ Time's up! Final Score: " + score);
+            restartGame();
+          }
+        }
+      }, 1000);
     }
 
-    function reset() {
-      puck.x = canvas.width / 2;
-      puck.y = canvas.height / 2;
-      puck.dx *= -1;
-      puck.dy = 3 * (Math.random() > 0.5 ? 1 : -1);
-    }
-
-    // Control paddle with mouse
-    canvas.addEventListener("mousemove", (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const mouseY = e.clientY - rect.top;
-      paddle.y = mouseY - paddle.h / 2;
-      paddle.y = Math.max(0, Math.min(canvas.height - paddle.h, paddle.y));
-    });
-
-    function gameLoop() {
+    function restartGame() {
+      score = 0;
+      resetPuck();
+      startTimer();
       draw();
-      update();
-      requestAnimationFrame(gameLoop);
     }
 
-    gameLoop();
+    setLevel(1);
+    startTimer();
+    draw();
   </script>
 </body>
 </html>
