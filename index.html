@@ -2,59 +2,84 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Neo Air Hockey AI</title>
+  <title>Neo Air Hockey</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #000; }
-    canvas { display: block; background: #111; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    canvas {
+      display: block;
+      background: radial-gradient(circle at center, #111 0%, #000 100%);
+    }
     #scoreboard {
       position: absolute;
-      top: 10px;
+      top: 15px;
       left: 50%;
       transform: translateX(-50%);
       font-size: 24px;
-      color: #fff;
-      font-family: Arial, sans-serif;
+      color: white;
+      text-shadow: 0 0 5px cyan;
+      z-index: 2;
     }
   </style>
 </head>
 <body>
   <div id="scoreboard">Player 0 : 0 AI</div>
   <canvas id="gameCanvas" width="800" height="500"></canvas>
+
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
 
-    let playerScore = 0, aiScore = 0;
-    const paddle = { x: 50, y: canvas.height / 2 - 40, w: 15, h: 80 };
-    const aiPaddle = { x: canvas.width - 65, y: canvas.height / 2 - 40, w: 15, h: 80 };
-    const puck = { x: canvas.width / 2, y: canvas.height / 2, r: 12, dx: 5, dy: 3 };
-
+    // Sounds
     const hitSound = new Audio("https://cdn.pixabay.com/audio/2022/10/30/audio_ffa24b2b6b.mp3");
     const goalSound = new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_492ff5b92d.mp3");
 
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Game objects
+    let playerScore = 0, aiScore = 0;
+    const paddle = { x: 40, y: canvas.height / 2 - 40, w: 15, h: 80, color: 'cyan' };
+    const aiPaddle = { x: canvas.width - 55, y: canvas.height / 2 - 40, w: 15, h: 80, color: 'red' };
+    const puck = { x: canvas.width / 2, y: canvas.height / 2, r: 12, dx: 5, dy: 3, color: 'white' };
 
-      // Background elements
+    function drawPaddle(p) {
+      ctx.fillStyle = p.color;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = p.color;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.shadowBlur = 0;
+    }
+
+    function drawPuck() {
+      ctx.beginPath();
+      ctx.arc(puck.x, puck.y, puck.r, 0, Math.PI * 2);
+      ctx.fillStyle = puck.color;
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = 'white';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawCenterLine() {
       ctx.strokeStyle = "#444";
       ctx.lineWidth = 2;
+      ctx.setLineDash([10, 10]);
       ctx.beginPath();
       ctx.moveTo(canvas.width / 2, 0);
       ctx.lineTo(canvas.width / 2, canvas.height);
       ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
-      // Draw paddles and puck
-      ctx.fillStyle = "#0f0";
-      ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
-
-      ctx.fillStyle = "#f00";
-      ctx.fillRect(aiPaddle.x, aiPaddle.y, aiPaddle.w, aiPaddle.h);
-
-      ctx.beginPath();
-      ctx.arc(puck.x, puck.y, puck.r, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.fill();
-      ctx.closePath();
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawCenterLine();
+      drawPaddle(paddle);
+      drawPaddle(aiPaddle);
+      drawPuck();
     }
 
     function update() {
@@ -88,43 +113,40 @@
         hitSound.play();
       }
 
-      // Scoring
+      // Score detection
       if (puck.x < 0) {
         aiScore++;
-        reset();
         goalSound.play();
+        reset();
       } else if (puck.x > canvas.width) {
         playerScore++;
-        reset();
         goalSound.play();
+        reset();
       }
 
       document.getElementById("scoreboard").innerText = `Player ${playerScore} : ${aiScore}`;
 
       // AI movement
       let center = aiPaddle.y + aiPaddle.h / 2;
-      if (center < puck.y - 15) aiPaddle.y += 4;
-      else if (center > puck.y + 15) aiPaddle.y -= 4;
+      if (center < puck.y - 15) aiPaddle.y += 3;
+      else if (center > puck.y + 15) aiPaddle.y -= 3;
 
-      // Keep AI paddle on screen
-      if (aiPaddle.y < 0) aiPaddle.y = 0;
-      if (aiPaddle.y + aiPaddle.h > canvas.height) aiPaddle.y = canvas.height - aiPaddle.h;
+      aiPaddle.y = Math.max(0, Math.min(canvas.height - aiPaddle.h, aiPaddle.y));
     }
 
     function reset() {
       puck.x = canvas.width / 2;
       puck.y = canvas.height / 2;
       puck.dx *= -1;
+      puck.dy = 3 * (Math.random() > 0.5 ? 1 : -1);
     }
 
+    // Control paddle with mouse
     canvas.addEventListener("mousemove", (e) => {
-      let rect = canvas.getBoundingClientRect();
-      let mouseY = e.clientY - rect.top;
+      const rect = canvas.getBoundingClientRect();
+      const mouseY = e.clientY - rect.top;
       paddle.y = mouseY - paddle.h / 2;
-
-      // Lock paddle to left side and inside screen
-      if (paddle.y < 0) paddle.y = 0;
-      if (paddle.y + paddle.h > canvas.height) paddle.y = canvas.height - paddle.h;
+      paddle.y = Math.max(0, Math.min(canvas.height - paddle.h, paddle.y));
     });
 
     function gameLoop() {
