@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Neo Air Hockey AI</title>
   <style>
     html, body {
@@ -12,37 +12,38 @@
     }
     canvas {
       display: block;
-      margin: 0 auto;
       background: radial-gradient(circle at center, #222, #000);
     }
     #scoreboard {
       position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
+      top: 10px;
+      width: 100%;
+      text-align: center;
+      font-size: 28px;
       color: white;
       font-family: Arial, sans-serif;
-      font-size: 24px;
       z-index: 1;
-      text-align: center;
     }
   </style>
 </head>
 <body>
-<div id="scoreboard">Player: 0 | AI: 0</div>
+<div id="scoreboard">
+  Player: <span id="playerScore">0</span> | AI: <span id="aiScore">0</span>
+</div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
-  const scoreboard = document.getElementById('scoreboard');
-
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 
-  let paddleRadius = 50;
-  let puckRadius = 20;
-  let aiSpeed = 5;
+  const paddleRadius = 50;
+  const puckRadius = 20;
+  const aiSpeed = 5;
+
+  let playerScore = 0;
+  let aiScore = 0;
 
   const player = {
     x: canvas.width / 2,
@@ -61,21 +62,11 @@
   const puck = {
     x: canvas.width / 2,
     y: canvas.height / 2,
-    vx: 5,
-    vy: 5,
+    vx: 6,
+    vy: 6,
     radius: puckRadius,
     color: "#fff"
   };
-
-  let playerScore = 0;
-  let aiScore = 0;
-
-  function resetPuck() {
-    puck.x = canvas.width / 2;
-    puck.y = canvas.height / 2;
-    puck.vx = (Math.random() > 0.5 ? 5 : -5);
-    puck.vy = (Math.random() > 0.5 ? 5 : -5);
-  }
 
   canvas.addEventListener('mousemove', (e) => {
     player.x = e.clientX;
@@ -84,7 +75,7 @@
 
   function drawCircle(x, y, r, color) {
     ctx.beginPath();
-    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
     ctx.closePath();
@@ -93,15 +84,28 @@
   function moveAI() {
     if (puck.y < canvas.height / 2) {
       if (puck.x < ai.x) ai.x -= aiSpeed;
-      else if (puck.x > ai.x) ai.x += aiSpeed;
+      if (puck.x > ai.x) ai.x += aiSpeed;
     }
   }
 
-  function checkCollision(obj1, obj2) {
-    let dx = obj1.x - obj2.x;
-    let dy = obj1.y - obj2.y;
-    let distance = Math.sqrt(dx * dx + dy * dy);
-    return distance < obj1.radius + obj2.radius;
+  function checkCollision(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    return distance < a.radius + b.radius;
+  }
+
+  function resetPuck(scoredBy) {
+    puck.x = canvas.width / 2;
+    puck.y = canvas.height / 2;
+    puck.vx = 6 * (Math.random() > 0.5 ? 1 : -1);
+    puck.vy = 6 * (Math.random() > 0.5 ? 1 : -1);
+
+    if (scoredBy === "player") playerScore++;
+    if (scoredBy === "ai") aiScore++;
+
+    document.getElementById("playerScore").textContent = playerScore;
+    document.getElementById("aiScore").textContent = aiScore;
   }
 
   function update() {
@@ -109,20 +113,13 @@
     puck.y += puck.vy;
 
     // Wall bounce
-    if (puck.x <= puck.radius || puck.x >= canvas.width - puck.radius) {
-      puck.vx *= -1;
-    }
+    if (puck.x <= puck.radius || puck.x >= canvas.width - puck.radius) puck.vx *= -1;
 
-    // Score check
-    if (puck.y <= 0) {
-      playerScore++;
-      resetPuck();
-    } else if (puck.y >= canvas.height) {
-      aiScore++;
-      resetPuck();
-    }
+    // Goal detection
+    if (puck.y <= 0) resetPuck("player");
+    if (puck.y >= canvas.height) resetPuck("ai");
 
-    // Collision with paddles
+    // Paddle collisions
     if (checkCollision(puck, player)) {
       let angle = Math.atan2(puck.y - player.y, puck.x - player.x);
       puck.vx = 6 * Math.cos(angle);
@@ -136,16 +133,10 @@
     }
 
     moveAI();
-    updateScoreboard();
-  }
-
-  function updateScoreboard() {
-    scoreboard.textContent = `Player: ${playerScore} | AI: ${aiScore}`;
   }
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     drawCircle(player.x, player.y, player.radius, player.color);
     drawCircle(ai.x, ai.y, ai.radius, ai.color);
     drawCircle(puck.x, puck.y, puck.radius, puck.color);
