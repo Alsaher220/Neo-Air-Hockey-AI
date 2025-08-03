@@ -4,151 +4,178 @@
   <meta charset="UTF-8" />
   <title>Neo Air Hockey AI</title>
   <style>
-    html, body {
+    body {
       margin: 0;
-      padding: 0;
-      background: #111;
       overflow: hidden;
+      background-color: #111;
     }
     canvas {
       display: block;
-      background: radial-gradient(circle at center, #222, #000);
+      background-color: #004466;
     }
     #scoreboard {
       position: absolute;
       top: 10px;
-      width: 100%;
-      text-align: center;
-      font-size: 28px;
-      color: white;
-      font-family: Arial, sans-serif;
-      z-index: 1;
+      left: 10px;
+      font-size: 18px;
+      color: #fff;
+      font-family: sans-serif;
+    }
+    #timer {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-size: 18px;
+      color: #fff;
+      font-family: sans-serif;
     }
   </style>
 </head>
 <body>
-<div id="scoreboard">
-  Player: <span id="playerScore">0</span> | AI: <span id="aiScore">0</span>
-</div>
-<canvas id="gameCanvas"></canvas>
+  <div id="scoreboard">Player: 0 | AI: 0</div>
+  <div id="timer">Time: 03:00</div>
+  <canvas id="gameCanvas" width="800" height="400"></canvas>
 
-<script>
-  const canvas = document.getElementById('gameCanvas');
-  const ctx = canvas.getContext('2d');
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  <!-- Sound effects -->
+  <audio id="hitSound" src="https://www.fesliyanstudios.com/play-mp3/387" preload="auto"></audio>
+  <audio id="goalSound" src="https://www.fesliyanstudios.com/play-mp3/6677" preload="auto"></audio>
+  <audio id="bgMusic" src="https://www.fesliyanstudios.com/play-mp3/3874" autoplay loop preload="auto"></audio>
 
-  const paddleRadius = 50;
-  const puckRadius = 20;
-  const aiSpeed = 5;
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const hitSound = document.getElementById('hitSound');
+    const goalSound = document.getElementById('goalSound');
+    const bgMusic = document.getElementById('bgMusic');
+    const scoreboard = document.getElementById('scoreboard');
+    const timerDisplay = document.getElementById('timer');
 
-  let playerScore = 0;
-  let aiScore = 0;
+    const width = canvas.width;
+    const height = canvas.height;
 
-  const player = {
-    x: canvas.width / 2,
-    y: canvas.height - 100,
-    radius: paddleRadius,
-    color: "#00f"
-  };
+    let playerScore = 0;
+    let aiScore = 0;
+    let gameTime = 180; // 3 minutes
 
-  const ai = {
-    x: canvas.width / 2,
-    y: 100,
-    radius: paddleRadius,
-    color: "#f00"
-  };
+    let puck = { x: width / 2, y: height / 2, radius: 10, dx: 4, dy: 4 };
+    let player = { x: 50, y: height / 2, radius: 20 };
+    let ai = { x: width - 50, y: height / 2, radius: 20 };
 
-  const puck = {
-    x: canvas.width / 2,
-    y: canvas.height / 2,
-    vx: 6,
-    vy: 6,
-    radius: puckRadius,
-    color: "#fff"
-  };
+    document.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      player.y = e.clientY - rect.top;
+    });
 
-  canvas.addEventListener('mousemove', (e) => {
-    player.x = e.clientX;
-    player.y = e.clientY;
-  });
+    function drawBoard() {
+      ctx.fillStyle = '#004466';
+      ctx.fillRect(0, 0, width, height);
 
-  function drawCircle(x, y, r, color) {
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.closePath();
-  }
+      // Midline
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(width / 2, 0);
+      ctx.lineTo(width / 2, height);
+      ctx.stroke();
 
-  function moveAI() {
-    if (puck.y < canvas.height / 2) {
-      if (puck.x < ai.x) ai.x -= aiSpeed;
-      if (puck.x > ai.x) ai.x += aiSpeed;
-    }
-  }
+      // Center circle
+      ctx.beginPath();
+      ctx.arc(width / 2, height / 2, 40, 0, Math.PI * 2);
+      ctx.stroke();
 
-  function checkCollision(a, b) {
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    return distance < a.radius + b.radius;
-  }
-
-  function resetPuck(scoredBy) {
-    puck.x = canvas.width / 2;
-    puck.y = canvas.height / 2;
-    puck.vx = 6 * (Math.random() > 0.5 ? 1 : -1);
-    puck.vy = 6 * (Math.random() > 0.5 ? 1 : -1);
-
-    if (scoredBy === "player") playerScore++;
-    if (scoredBy === "ai") aiScore++;
-
-    document.getElementById("playerScore").textContent = playerScore;
-    document.getElementById("aiScore").textContent = aiScore;
-  }
-
-  function update() {
-    puck.x += puck.vx;
-    puck.y += puck.vy;
-
-    // Wall bounce
-    if (puck.x <= puck.radius || puck.x >= canvas.width - puck.radius) puck.vx *= -1;
-
-    // Goal detection
-    if (puck.y <= 0) resetPuck("player");
-    if (puck.y >= canvas.height) resetPuck("ai");
-
-    // Paddle collisions
-    if (checkCollision(puck, player)) {
-      let angle = Math.atan2(puck.y - player.y, puck.x - player.x);
-      puck.vx = 6 * Math.cos(angle);
-      puck.vy = 6 * Math.sin(angle);
+      // Goals
+      ctx.fillStyle = 'red';
+      ctx.fillRect(0, height / 2 - 50, 10, 100); // Player goal
+      ctx.fillRect(width - 10, height / 2 - 50, 10, 100); // AI goal
     }
 
-    if (checkCollision(puck, ai)) {
-      let angle = Math.atan2(puck.y - ai.y, puck.x - ai.x);
-      puck.vx = 6 * Math.cos(angle);
-      puck.vy = 6 * Math.sin(angle);
+    function drawPaddle(paddle, color) {
+      ctx.beginPath();
+      ctx.arc(paddle.x, paddle.y, paddle.radius, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
     }
 
-    moveAI();
-  }
+    function drawPuck() {
+      ctx.beginPath();
+      ctx.arc(puck.x, puck.y, puck.radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'white';
+      ctx.fill();
+    }
 
-  function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawCircle(player.x, player.y, player.radius, player.color);
-    drawCircle(ai.x, ai.y, ai.radius, ai.color);
-    drawCircle(puck.x, puck.y, puck.radius, puck.color);
-  }
+    function update() {
+      puck.x += puck.dx;
+      puck.y += puck.dy;
 
-  function loop() {
-    update();
-    draw();
-    requestAnimationFrame(loop);
-  }
+      // Bounce off top and bottom
+      if (puck.y - puck.radius < 0 || puck.y + puck.radius > height) {
+        puck.dy *= -1;
+        hitSound.play();
+      }
 
-  loop();
-</script>
+      // Bounce off paddles
+      const hitPlayer = Math.hypot(puck.x - player.x, puck.y - player.y) < puck.radius + player.radius;
+      const hitAI = Math.hypot(puck.x - ai.x, puck.y - ai.y) < puck.radius + ai.radius;
+
+      if (hitPlayer || hitAI) {
+        puck.dx *= -1;
+        hitSound.play();
+      }
+
+      // AI Movement
+      if (puck.y < ai.y) ai.y -= 3;
+      if (puck.y > ai.y) ai.y += 3;
+
+      // Goal
+      if (puck.x - puck.radius < 0) {
+        aiScore++;
+        goalSound.play();
+        resetPuck();
+      } else if (puck.x + puck.radius > width) {
+        playerScore++;
+        goalSound.play();
+        resetPuck();
+      }
+
+      scoreboard.textContent = `Player: ${playerScore} | AI: ${aiScore}`;
+    }
+
+    function resetPuck() {
+      puck.x = width / 2;
+      puck.y = height / 2;
+      puck.dx *= -1;
+      puck.dy = 4 * (Math.random() > 0.5 ? 1 : -1);
+    }
+
+    function updateTimer() {
+      if (gameTime > 0) {
+        gameTime--;
+        const mins = String(Math.floor(gameTime / 60)).padStart(2, '0');
+        const secs = String(gameTime % 60).padStart(2, '0');
+        timerDisplay.textContent = `Time: ${mins}:${secs}`;
+      } else {
+        clearInterval(gameLoop);
+        clearInterval(timerInterval);
+        timerDisplay.textContent = "Time: 00:00";
+        alert(playerScore > aiScore ? "You Win!" : playerScore < aiScore ? "AI Wins!" : "Draw!");
+      }
+    }
+
+    function draw() {
+      drawBoard();
+      drawPaddle(player, 'lime');
+      drawPaddle(ai, 'orange');
+      drawPuck();
+    }
+
+    function loop() {
+      ctx.clearRect(0, 0, width, height);
+      update();
+      draw();
+    }
+
+    const gameLoop = setInterval(loop, 1000 / 60);
+    const timerInterval = setInterval(updateTimer, 1000);
+  </script>
 </body>
 </html>
