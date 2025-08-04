@@ -1,238 +1,202 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Neo Air Hockey AI</title>
+  <meta charset="UTF-8">
+  <title>Neo Air Hockey</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
-      overflow: hidden;
       background: #000;
+      overflow: hidden;
       font-family: Arial, sans-serif;
-      cursor: url('https://cur.cursors-4u.net/sports/spo-3/spo263.cur'), auto;
     }
-
     canvas {
       display: block;
-      background: linear-gradient(45deg, #0a0a0a, #111);
+      margin: auto;
+      background: #111;
+      cursor: none;
     }
-
-    #ui {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 2;
-      color: #fff;
-    }
-
-    button {
-      padding: 8px 12px;
-      margin: 5px;
-      background: #222;
-      color: #fff;
-      border: 1px solid #555;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #444;
-    }
-
     #scoreBoard {
       position: absolute;
       top: 10px;
-      right: 10px;
-      color: #fff;
+      width: 100%;
+      text-align: center;
+      color: white;
+      font-size: 20px;
+    }
+    #pauseBtn {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
       font-size: 16px;
+      padding: 8px 16px;
+      background: #444;
+      color: white;
+      border: none;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <div id="ui">
-    <button onclick="togglePause()">⏯ Pause/Play</button>
-    <button onclick="resetGame()">🔁 Restart</button>
-  </div>
+  <canvas id="gameCanvas" width="800" height="500"></canvas>
   <div id="scoreBoard">Player: 0 | AI: 0 | High Score: 0</div>
-  <canvas id="gameCanvas"></canvas>
+  <button id="pauseBtn">Pause</button>
 
   <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
 
-    const paddleWidth = 20, paddleHeight = 100;
-    const puckSize = 20;
-
-    let paused = false;
-    let playerScore = 0, aiScore = 0;
-    let highScore = parseInt(localStorage.getItem("highScore")) || 0;
-
-    const player = {
-      x: 30,
-      y: canvas.height / 2 - paddleHeight / 2,
-      width: paddleWidth,
-      height: paddleHeight,
-      color: "#00BFFF"
-    };
-
-    const ai = {
-      x: canvas.width - 50,
-      y: canvas.height / 2 - paddleHeight / 2,
-      width: paddleWidth,
-      height: paddleHeight,
-      color: "#FF3E3E"
-    };
-
-    const puck = {
+    let paddleWidth = 100, paddleHeight = 10, paddleSpeed = 8;
+    let player = { x: canvas.width / 2 - paddleWidth / 2, y: canvas.height - 20, score: 0 };
+    let ai = { x: canvas.width / 2 - paddleWidth / 2, y: 10, score: 0 };
+    let puck = {
       x: canvas.width / 2,
       y: canvas.height / 2,
-      size: puckSize,
-      dx: 6 * (Math.random() > 0.5 ? 1 : -1),
-      dy: 6 * (Math.random() > 0.5 ? 1 : -1),
-      color: "#fff"
+      radius: 10,
+      speedX: 4,
+      speedY: 4
     };
 
-    function drawGlowingRect(x, y, width, height, color) {
-      ctx.save();
+    let paused = false;
+    const goalSound = new Audio("https://cdn.pixabay.com/audio/2021/08/04/audio_640cc74e28.mp3");
+    let highScore = parseInt(localStorage.getItem("highScore")) || 0;
+
+    function drawPaddle(x, y, color) {
+      ctx.beginPath();
       ctx.shadowColor = color;
-      ctx.shadowBlur = 20;
+      ctx.shadowBlur = 15;
       ctx.fillStyle = color;
-      ctx.fillRect(x, y, width, height);
-      ctx.restore();
+      ctx.fillRect(x, y, paddleWidth, paddleHeight);
+      ctx.shadowBlur = 0;
     }
 
-    function drawGlowingPuck(x, y, size, color) {
-      ctx.save();
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 20;
-      ctx.fillStyle = color;
+    function drawPuck() {
       ctx.beginPath();
-      ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+      ctx.arc(puck.x, puck.y, puck.radius, 0, Math.PI * 2);
+      ctx.fillStyle = "#eee";
+      ctx.shadowColor = "#fff";
+      ctx.shadowBlur = 10;
       ctx.fill();
-      ctx.restore();
+      ctx.shadowBlur = 0;
     }
 
     function drawCenterLine() {
-      ctx.strokeStyle = "#444";
+      ctx.strokeStyle = '#444';
       ctx.lineWidth = 2;
-      ctx.setLineDash([15, 10]);
+      ctx.setLineDash([10, 15]);
       ctx.beginPath();
-      ctx.moveTo(canvas.width / 2, 0);
-      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    function playSound(type) {
-      const sound = new Audio(type === 'goal'
-        ? 'https://freesound.org/data/previews/337/337049_3231594-lq.mp3'
-        : 'https://freesound.org/data/previews/18/18500_1058-lq.mp3');
-      sound.volume = 0.4;
-      sound.play();
+    function drawBoundaries() {
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
     }
+
+    function drawCustomCursor() {
+      ctx.beginPath();
+      ctx.arc(mouse.x, mouse.y, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = '#0ff';
+      ctx.shadowColor = '#0ff';
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    let mouse = { x: player.x + paddleWidth / 2, y: player.y };
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+    });
+
+    canvas.addEventListener('touchmove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.touches[0].clientX - rect.left;
+    });
+
+    document.getElementById('pauseBtn').onclick = () => {
+      paused = !paused;
+      document.getElementById('pauseBtn').innerText = paused ? 'Resume' : 'Pause';
+    };
 
     function update() {
       if (paused) return;
 
-      puck.x += puck.dx;
-      puck.y += puck.dy;
+      player.x = mouse.x - paddleWidth / 2;
+      player.x = Math.max(0, Math.min(canvas.width - paddleWidth, player.x));
 
-      if (puck.y < 0 || puck.y > canvas.height) {
-        puck.dy *= -1;
+      // Simple AI
+      if (puck.y < canvas.height / 2) {
+        if (puck.x < ai.x + paddleWidth / 2) ai.x -= paddleSpeed / 1.5;
+        else ai.x += paddleSpeed / 1.5;
+        ai.x = Math.max(0, Math.min(canvas.width - paddleWidth, ai.x));
       }
 
-      if (
-        puck.x < player.x + player.width &&
-        puck.y > player.y &&
-        puck.y < player.y + player.height
-      ) {
-        puck.dx *= -1;
-        puck.x = player.x + player.width;
-        playSound('hit');
+      puck.x += puck.speedX;
+      puck.y += puck.speedY;
+
+      // Wall collision
+      if (puck.x - puck.radius < 0 || puck.x + puck.radius > canvas.width) puck.speedX *= -1;
+
+      // Paddle collision
+      if (puck.y + puck.radius > player.y &&
+          puck.x > player.x && puck.x < player.x + paddleWidth) {
+        puck.speedY *= -1;
+        puck.y = player.y - puck.radius;
       }
 
-      if (
-        puck.x + puck.size > ai.x &&
-        puck.y > ai.y &&
-        puck.y < ai.y + ai.height
-      ) {
-        puck.dx *= -1;
-        puck.x = ai.x - puck.size;
-        playSound('hit');
+      if (puck.y - puck.radius < ai.y + paddleHeight &&
+          puck.x > ai.x && puck.x < ai.x + paddleWidth) {
+        puck.speedY *= -1;
+        puck.y = ai.y + paddleHeight + puck.radius;
       }
 
-      if (puck.x < 0) {
-        aiScore++;
+      // Goal
+      if (puck.y - puck.radius <= 0) {
+        player.score++;
+        goalSound.play();
         resetPuck();
-        playSound('goal');
-      } else if (puck.x > canvas.width) {
-        playerScore++;
-        if (playerScore > highScore) {
-          highScore = playerScore;
-          localStorage.setItem("highScore", highScore);
-        }
+      } else if (puck.y + puck.radius >= canvas.height) {
+        ai.score++;
+        goalSound.play();
         resetPuck();
-        playSound('goal');
       }
 
-      const aiCenter = ai.y + ai.height / 2;
-      if (aiCenter < puck.y - 35) ai.y += 6;
-      else if (aiCenter > puck.y + 35) ai.y -= 6;
-
-      ai.y = Math.max(0, Math.min(canvas.height - ai.height, ai.y));
-      player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
-    }
-
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawCenterLine();
-      drawGlowingRect(player.x, player.y, player.width, player.height, player.color);
-      drawGlowingRect(ai.x, ai.y, ai.width, ai.height, ai.color);
-      drawGlowingPuck(puck.x, puck.y, puck.size, "#ffffff");
-    }
-
-    function loop() {
-      update();
-      draw();
-      document.getElementById('scoreBoard').textContent =
-        `Player: ${playerScore} | AI: ${aiScore} | High Score: ${highScore}`;
-      requestAnimationFrame(loop);
+      // High score
+      if (player.score > highScore) {
+        highScore = player.score;
+        localStorage.setItem("highScore", highScore);
+      }
     }
 
     function resetPuck() {
       puck.x = canvas.width / 2;
       puck.y = canvas.height / 2;
-      puck.dx *= -1;
-      puck.dy = 6 * (Math.random() > 0.5 ? 1 : -1);
+      puck.speedY *= -1;
     }
 
-    function resetGame() {
-      playerScore = 0;
-      aiScore = 0;
-      resetPuck();
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawCenterLine();
+      drawBoundaries();
+      drawPaddle(player.x, player.y, "#00f");
+      drawPaddle(ai.x, ai.y, "#f00");
+      drawPuck();
+      drawCustomCursor();
+      document.getElementById('scoreBoard').textContent = `Player: ${player.score} | AI: ${ai.score} | High Score: ${highScore}`;
     }
 
-    function togglePause() {
-      paused = !paused;
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
     }
-
-    window.addEventListener("keydown", e => {
-      const speed = 20;
-      if (e.key === "ArrowUp") player.y -= speed;
-      if (e.key === "ArrowDown") player.y += speed;
-    });
-
-    canvas.addEventListener("touchmove", (e) => {
-      const touch = e.touches[0];
-      player.y = touch.clientY - player.height / 2;
-    });
-
-    window.addEventListener("resize", () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    });
 
     loop();
   </script>
