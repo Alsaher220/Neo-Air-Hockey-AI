@@ -23,33 +23,35 @@
     canvas {
       display: block;
       margin: auto;
-      background: rgba(0,0,0,0.4);
-      box-shadow: 0 0 30px #0ff inset, 0 0 60px #00f inset;
-      border: 3px solid #999;
-      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.35);
+      box-shadow: 0 0 40px #0ff, inset 0 0 60px #00f;
+      border-radius: 20px;
       cursor: none;
     }
 
     #ui {
       position: absolute;
-      top: 10px;
-      width: 100%;
-      text-align: center;
+      top: 20px;
+      left: 10px;
       color: white;
-      font-size: 18px;
-      background: rgba(0, 0, 0, 0.4);
-      padding: 10px;
-      border-radius: 8px;
-      box-shadow: 0 0 20px #00f;
+      font-size: 20px;
+      writing-mode: vertical-lr;
+      text-orientation: upright;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 8px;
+      border-radius: 10px;
+      box-shadow: 0 0 15px #0ff;
+      font-weight: bold;
     }
 
     #leftPanel, #rightPanel {
       position: absolute;
       top: 0;
+      width: 15px;
       height: 100%;
-      width: 20px;
       background: linear-gradient(to bottom, #00f, #0ff);
-      box-shadow: 0 0 20px #0ff;
+      box-shadow: 0 0 25px #0ff;
+      z-index: 0;
     }
 
     #leftPanel { left: 0; }
@@ -65,7 +67,7 @@
       background: #111;
       color: #0ff;
       border: 2px solid #0ff;
-      border-radius: 8px;
+      border-radius: 10px;
       cursor: pointer;
       box-shadow: 0 0 10px #0ff;
     }
@@ -79,7 +81,7 @@
 <body>
   <div id="leftPanel"></div>
   <div id="rightPanel"></div>
-  <canvas id="gameCanvas" width="800" height="500"></canvas>
+  <canvas id="gameCanvas" width="512" height="677"></canvas>
   <div id="ui">Player: 0 | AI: 0 | High Score: 0</div>
   <button id="pauseBtn">Pause</button>
 
@@ -90,14 +92,15 @@
     const ui = document.getElementById('ui');
     const pauseBtn = document.getElementById('pauseBtn');
 
-    let paddleWidth = 100, paddleHeight = 10, paddleSpeed = 8;
-    let player = { x: canvas.width / 2 - paddleWidth / 2, y: canvas.height - 20, score: 0 };
-    let ai = { x: canvas.width / 2 - paddleWidth / 2, y: 10, score: 0 };
+    let paddleWidth = 50, paddleHeight = 12, paddleSpeed = 6;
+    let player = { x: canvas.width - 30, y: canvas.height / 2 - paddleWidth / 2, score: 0 };
+    let ai = { x: 15, y: canvas.height / 2 - paddleWidth / 2, score: 0 };
+
     let puck = {
       x: canvas.width / 2,
       y: canvas.height / 2,
-      radius: 10,
-      speedX: 4,
+      radius: 8,
+      speedX: 3,
       speedY: 4,
       trail: []
     };
@@ -106,14 +109,14 @@
     const goalSound = new Audio("https://cdn.pixabay.com/audio/2021/08/04/audio_640cc74e28.mp3");
     let highScore = parseInt(localStorage.getItem("highScore")) || 0;
 
-    let mouse = { x: player.x + paddleWidth / 2, y: player.y };
+    let mouse = { x: player.x, y: player.y + paddleWidth / 2 };
     canvas.addEventListener('mousemove', e => {
       const rect = canvas.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
     });
     canvas.addEventListener('touchmove', e => {
       const rect = canvas.getBoundingClientRect();
-      mouse.x = e.touches[0].clientX - rect.left;
+      mouse.y = e.touches[0].clientY - rect.top;
     });
 
     pauseBtn.onclick = () => {
@@ -121,17 +124,20 @@
       pauseBtn.innerText = paused ? 'Resume' : 'Pause';
     };
 
-    function drawPaddle(x, y, color) {
+    function drawPaddle(y, x, color, vertical = true) {
       ctx.beginPath();
       ctx.shadowColor = color;
       ctx.shadowBlur = 20;
       ctx.fillStyle = color;
-      ctx.fillRect(x, y, paddleWidth, paddleHeight);
+      if (vertical) {
+        ctx.fillRect(x, y, paddleHeight, paddleWidth);
+      } else {
+        ctx.fillRect(y, x, paddleWidth, paddleHeight);
+      }
       ctx.shadowBlur = 0;
     }
 
     function drawPuck() {
-      // Trail
       puck.trail.push({ x: puck.x, y: puck.y });
       if (puck.trail.length > 10) puck.trail.shift();
 
@@ -143,12 +149,11 @@
         ctx.fill();
       }
 
-      // Puck
       ctx.beginPath();
       ctx.arc(puck.x, puck.y, puck.radius, 0, 2 * Math.PI);
       ctx.fillStyle = "#fff";
       ctx.shadowColor = "#0ff";
-      ctx.shadowBlur = 15;
+      ctx.shadowBlur = 20;
       ctx.fill();
       ctx.shadowBlur = 0;
     }
@@ -158,8 +163,8 @@
       ctx.lineWidth = 2;
       ctx.setLineDash([10, 15]);
       ctx.beginPath();
-      ctx.moveTo(0, canvas.height / 2);
-      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -175,7 +180,7 @@
       ctx.arc(mouse.x, mouse.y, 5, 0, 2 * Math.PI);
       ctx.fillStyle = '#0ff';
       ctx.shadowColor = '#0ff';
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 10;
       ctx.fill();
       ctx.shadowBlur = 0;
     }
@@ -183,44 +188,42 @@
     function update() {
       if (paused) return;
 
-      player.x = mouse.x - paddleWidth / 2;
-      player.x = Math.max(0, Math.min(canvas.width - paddleWidth, player.x));
+      player.y = mouse.y - paddleWidth / 2;
+      player.y = Math.max(0, Math.min(canvas.height - paddleWidth, player.y));
 
-      // AI movement
-      if (puck.y < canvas.height / 2) {
-        if (puck.x < ai.x + paddleWidth / 2) ai.x -= paddleSpeed / 1.5;
-        else ai.x += paddleSpeed / 1.5;
-        ai.x = Math.max(0, Math.min(canvas.width - paddleWidth, ai.x));
+      if (puck.x < canvas.width / 2) {
+        if (puck.y < ai.y + paddleWidth / 2) ai.y -= paddleSpeed / 1.5;
+        else ai.y += paddleSpeed / 1.5;
+        ai.y = Math.max(0, Math.min(canvas.height - paddleWidth, ai.y));
       }
 
       puck.x += puck.speedX;
       puck.y += puck.speedY;
 
-      // Wall bounce
-      if (puck.x - puck.radius < 0 || puck.x + puck.radius > canvas.width) puck.speedX *= -1;
+      if (puck.y - puck.radius < 0 || puck.y + puck.radius > canvas.height) puck.speedY *= -1;
 
-      // Paddle bounce
-      if (puck.y + puck.radius > player.y && puck.x > player.x && puck.x < player.x + paddleWidth) {
-        puck.speedY *= -1;
-        puck.y = player.y - puck.radius;
-      }
-      if (puck.y - puck.radius < ai.y + paddleHeight && puck.x > ai.x && puck.x < ai.x + paddleWidth) {
-        puck.speedY *= -1;
-        puck.y = ai.y + paddleHeight + puck.radius;
+      if (puck.x + puck.radius > player.x &&
+          puck.y > player.y && puck.y < player.y + paddleWidth) {
+        puck.speedX *= -1;
+        puck.x = player.x - puck.radius;
       }
 
-      // Scoring
-      if (puck.y - puck.radius <= 0) {
+      if (puck.x - puck.radius < ai.x + paddleHeight &&
+          puck.y > ai.y && puck.y < ai.y + paddleWidth) {
+        puck.speedX *= -1;
+        puck.x = ai.x + paddleHeight + puck.radius;
+      }
+
+      if (puck.x - puck.radius <= 0) {
         player.score++;
         goalSound.play();
         resetPuck();
-      } else if (puck.y + puck.radius >= canvas.height) {
+      } else if (puck.x + puck.radius >= canvas.width) {
         ai.score++;
         goalSound.play();
         resetPuck();
       }
 
-      // Save high score
       if (player.score > highScore) {
         highScore = player.score;
         localStorage.setItem("highScore", highScore);
@@ -230,16 +233,15 @@
     function resetPuck() {
       puck.x = canvas.width / 2;
       puck.y = canvas.height / 2;
-      puck.speedY *= -1;
-      puck.speedX = (Math.random() > 0.5 ? 1 : -1) * 4;
+      puck.speedX *= -1;
     }
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawCenterLine();
       drawBoundaries();
-      drawPaddle(player.x, player.y, "#00f");
-      drawPaddle(ai.x, ai.y, "#f00");
+      drawPaddle(player.y, player.x, "#00f");
+      drawPaddle(ai.y, ai.x, "#f00");
       drawPuck();
       drawCustomCursor();
       ui.textContent = `Player: ${player.score} | AI: ${ai.score} | High Score: ${highScore}`;
