@@ -2,249 +2,142 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Neo Air Hockey</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neo Air Hockey AI</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: linear-gradient(135deg, #0ff, #00f, #f0f, #000);
-      background-size: 600% 600%;
-      animation: gradientBG 15s ease infinite;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-
-    @keyframes gradientBG {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-
-    canvas {
-      display: block;
-      margin: auto;
-      background: rgba(0, 0, 0, 0.35);
-      box-shadow: 0 0 40px #0ff, inset 0 0 60px #00f;
-      border-radius: 20px;
-      cursor: none;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { height: 100%; overflow: hidden; background: #050505; cursor: url('https://cur.cursors-4u.net/games/gam-1/gam31.cur'), auto; }
+    canvas { display: block; background: #111; margin: 0 auto; border: 6px solid #00ffea; border-radius: 10px; }
     #ui {
       position: absolute;
-      top: 20px;
+      top: 10px;
       left: 10px;
-      color: white;
-      font-size: 20px;
-      writing-mode: vertical-lr;
-      text-orientation: upright;
-      background: rgba(0, 0, 0, 0.5);
-      padding: 8px;
-      border-radius: 10px;
-      box-shadow: 0 0 15px #0ff;
-      font-weight: bold;
+      color: #fff;
+      font-family: 'Arial', sans-serif;
+      z-index: 10;
     }
-
-    #leftPanel, #rightPanel {
-      position: absolute;
-      top: 0;
-      width: 15px;
-      height: 100%;
-      background: linear-gradient(to bottom, #00f, #0ff);
-      box-shadow: 0 0 25px #0ff;
-      z-index: 0;
-    }
-
-    #leftPanel { left: 0; }
-    #rightPanel { right: 0; }
-
-    #pauseBtn {
-      position: absolute;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 16px;
-      padding: 10px 20px;
-      background: #111;
-      color: #0ff;
-      border: 2px solid #0ff;
-      border-radius: 10px;
-      cursor: pointer;
-      box-shadow: 0 0 10px #0ff;
-    }
-
-    #pauseBtn:hover {
-      background: #0ff;
+    #ui button {
+      background: #00ffea;
       color: #000;
+      font-weight: bold;
+      border: none;
+      padding: 10px;
+      margin-right: 10px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    #scoreboard {
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
-  <div id="leftPanel"></div>
-  <div id="rightPanel"></div>
-  <canvas id="gameCanvas" width="512" height="677"></canvas>
-  <div id="ui">Player: 0 | AI: 0 | High Score: 0</div>
-  <button id="pauseBtn">Pause</button>
+  <div id="ui">
+    <button onclick="togglePause()">⏯️ Pause/Play</button>
+    <button onclick="toggleFullscreen()">🖥️ Fullscreen</button>
+    <div id="scoreboard">Player: 0 | AI: 0 | High Score: 0</div>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+  <audio id="goalSound" src="https://www.fesliyanstudios.com/play-mp3/387" preload="auto"></audio>
+  <audio id="bgMusic" src="https://www.fesliyanstudios.com/play-mp3/7232" loop autoplay></audio>
 
   <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-
-    const ui = document.getElementById('ui');
-    const pauseBtn = document.getElementById('pauseBtn');
-
-    let paddleWidth = 50, paddleHeight = 12, paddleSpeed = 6;
-    let player = { x: canvas.width - 30, y: canvas.height / 2 - paddleWidth / 2, score: 0 };
-    let ai = { x: 15, y: canvas.height / 2 - paddleWidth / 2, score: 0 };
-
-    let puck = {
-      x: canvas.width / 2,
-      y: canvas.height / 2,
-      radius: 8,
-      speedX: 3,
-      speedY: 4,
-      trail: []
-    };
+    canvas.width = 800;
+    canvas.height = 400;
 
     let paused = false;
-    const goalSound = new Audio("https://cdn.pixabay.com/audio/2021/08/04/audio_640cc74e28.mp3");
-    let highScore = parseInt(localStorage.getItem("highScore")) || 0;
+    let playerScore = 0, aiScore = 0;
+    let highScore = localStorage.getItem('highScore') || 0;
+    const scoreboard = document.getElementById('scoreboard');
+    const goalSound = document.getElementById('goalSound');
 
-    let mouse = { x: player.x, y: player.y + paddleWidth / 2 };
-    canvas.addEventListener('mousemove', e => {
-      const rect = canvas.getBoundingClientRect();
-      mouse.y = e.clientY - rect.top;
-    });
-    canvas.addEventListener('touchmove', e => {
-      const rect = canvas.getBoundingClientRect();
-      mouse.y = e.touches[0].clientY - rect.top;
-    });
-
-    pauseBtn.onclick = () => {
-      paused = !paused;
-      pauseBtn.innerText = paused ? 'Resume' : 'Pause';
-    };
-
-    function drawPaddle(y, x, color, vertical = true) {
-      ctx.beginPath();
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 20;
-      ctx.fillStyle = color;
-      if (vertical) {
-        ctx.fillRect(x, y, paddleHeight, paddleWidth);
-      } else {
-        ctx.fillRect(y, x, paddleWidth, paddleHeight);
-      }
-      ctx.shadowBlur = 0;
-    }
-
-    function drawPuck() {
-      puck.trail.push({ x: puck.x, y: puck.y });
-      if (puck.trail.length > 10) puck.trail.shift();
-
-      for (let i = 0; i < puck.trail.length; i++) {
-        const t = puck.trail[i];
-        ctx.beginPath();
-        ctx.arc(t.x, t.y, puck.radius * (i / puck.trail.length), 0, 2 * Math.PI);
-        ctx.fillStyle = `rgba(255,255,255,${i / puck.trail.length})`;
-        ctx.fill();
-      }
-
-      ctx.beginPath();
-      ctx.arc(puck.x, puck.y, puck.radius, 0, 2 * Math.PI);
-      ctx.fillStyle = "#fff";
-      ctx.shadowColor = "#0ff";
-      ctx.shadowBlur = 20;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
-
-    function drawCenterLine() {
-      ctx.strokeStyle = '#0ff';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([10, 15]);
-      ctx.beginPath();
-      ctx.moveTo(canvas.width / 2, 0);
-      ctx.lineTo(canvas.width / 2, canvas.height);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    function drawBoundaries() {
-      ctx.strokeStyle = '#0ff';
-      ctx.lineWidth = 4;
-      ctx.strokeRect(0, 0, canvas.width, canvas.height);
-    }
-
-    function drawCustomCursor() {
-      ctx.beginPath();
-      ctx.arc(mouse.x, mouse.y, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = '#0ff';
-      ctx.shadowColor = '#0ff';
-      ctx.shadowBlur = 10;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
+    const puck = { x: 400, y: 200, radius: 10, vx: 5, vy: 3 };
+    const player = { x: 100, y: 200, radius: 20 };
+    const ai = { x: 700, y: 200, radius: 20 };
 
     function update() {
       if (paused) return;
 
-      player.y = mouse.y - paddleWidth / 2;
-      player.y = Math.max(0, Math.min(canvas.height - paddleWidth, player.y));
+      puck.x += puck.vx;
+      puck.y += puck.vy;
 
-      if (puck.x < canvas.width / 2) {
-        if (puck.y < ai.y + paddleWidth / 2) ai.y -= paddleSpeed / 1.5;
-        else ai.y += paddleSpeed / 1.5;
-        ai.y = Math.max(0, Math.min(canvas.height - paddleWidth, ai.y));
+      // Bounce
+      if (puck.y <= 0 || puck.y >= canvas.height) puck.vy *= -1;
+
+      // Collision with player
+      let dx = puck.x - player.x;
+      let dy = puck.y - player.y;
+      if (Math.hypot(dx, dy) < puck.radius + player.radius) {
+        puck.vx *= -1;
+        puck.x = player.x + puck.radius + player.radius;
       }
 
-      puck.x += puck.speedX;
-      puck.y += puck.speedY;
-
-      if (puck.y - puck.radius < 0 || puck.y + puck.radius > canvas.height) puck.speedY *= -1;
-
-      if (puck.x + puck.radius > player.x &&
-          puck.y > player.y && puck.y < player.y + paddleWidth) {
-        puck.speedX *= -1;
-        puck.x = player.x - puck.radius;
+      // Collision with AI
+      dx = puck.x - ai.x;
+      dy = puck.y - ai.y;
+      if (Math.hypot(dx, dy) < puck.radius + ai.radius) {
+        puck.vx *= -1;
+        puck.x = ai.x - puck.radius - ai.radius;
       }
 
-      if (puck.x - puck.radius < ai.x + paddleHeight &&
-          puck.y > ai.y && puck.y < ai.y + paddleWidth) {
-        puck.speedX *= -1;
-        puck.x = ai.x + paddleHeight + puck.radius;
-      }
+      // AI movement
+      if (ai.y < puck.y) ai.y += 3;
+      if (ai.y > puck.y) ai.y -= 3;
 
-      if (puck.x - puck.radius <= 0) {
-        player.score++;
+      // Goals
+      if (puck.x <= 0) {
+        aiScore++;
+        reset();
         goalSound.play();
-        resetPuck();
-      } else if (puck.x + puck.radius >= canvas.width) {
-        ai.score++;
+      }
+      if (puck.x >= canvas.width) {
+        playerScore++;
         goalSound.play();
-        resetPuck();
+        if (playerScore > highScore) {
+          highScore = playerScore;
+          localStorage.setItem('highScore', highScore);
+        }
+        reset();
       }
 
-      if (player.score > highScore) {
-        highScore = player.score;
-        localStorage.setItem("highScore", highScore);
-      }
-    }
-
-    function resetPuck() {
-      puck.x = canvas.width / 2;
-      puck.y = canvas.height / 2;
-      puck.speedX *= -1;
+      scoreboard.textContent = `Player: ${playerScore} | AI: ${aiScore} | High Score: ${highScore}`;
     }
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawCenterLine();
-      drawBoundaries();
-      drawPaddle(player.y, player.x, "#00f");
-      drawPaddle(ai.y, ai.x, "#f00");
-      drawPuck();
-      drawCustomCursor();
-      ui.textContent = `Player: ${player.score} | AI: ${ai.score} | High Score: ${highScore}`;
+
+      // Field
+      ctx.strokeStyle = '#00ffea';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
+
+      // Goals
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, canvas.height / 2 - 40, 5, 80);
+      ctx.fillRect(canvas.width - 5, canvas.height / 2 - 40, 5, 80);
+
+      // Puck
+      ctx.beginPath();
+      ctx.arc(puck.x, puck.y, puck.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+
+      // Players
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#00ffea';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(ai.x, ai.y, ai.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff004c';
+      ctx.fill();
     }
 
     function loop() {
@@ -253,6 +146,37 @@
       requestAnimationFrame(loop);
     }
 
+    function reset() {
+      puck.x = 400;
+      puck.y = 200;
+      puck.vx = 5 * (Math.random() > 0.5 ? 1 : -1);
+      puck.vy = 3 * (Math.random() > 0.5 ? 1 : -1);
+    }
+
+    function togglePause() {
+      paused = !paused;
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        canvas.requestFullscreen().catch(err => alert(`Error: ${err}`));
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    canvas.addEventListener('touchmove', (e) => {
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      player.y = touch.clientY - rect.top;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      player.y = e.clientY - rect.top;
+    });
+
+    reset();
     loop();
   </script>
 </body>
