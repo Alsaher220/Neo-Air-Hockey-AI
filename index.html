@@ -1,52 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Neo Air Hockey</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
-      background: #000;
       overflow: hidden;
-      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #0ff, #00f, #f0f, #000);
+      background-size: 600% 600%;
+      animation: gradientBG 15s ease infinite;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
+
+    @keyframes gradientBG {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
     canvas {
       display: block;
       margin: auto;
-      background: #111;
+      background: rgba(0,0,0,0.4);
+      box-shadow: 0 0 30px #0ff inset, 0 0 60px #00f inset;
+      border: 3px solid #999;
+      border-radius: 10px;
       cursor: none;
     }
-    #scoreBoard {
+
+    #ui {
       position: absolute;
       top: 10px;
       width: 100%;
       text-align: center;
       color: white;
-      font-size: 20px;
+      font-size: 18px;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 20px #00f;
     }
+
+    #leftPanel, #rightPanel {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      width: 20px;
+      background: linear-gradient(to bottom, #00f, #0ff);
+      box-shadow: 0 0 20px #0ff;
+    }
+
+    #leftPanel { left: 0; }
+    #rightPanel { right: 0; }
+
     #pauseBtn {
       position: absolute;
       bottom: 10px;
       left: 50%;
       transform: translateX(-50%);
       font-size: 16px;
-      padding: 8px 16px;
-      background: #444;
-      color: white;
-      border: none;
+      padding: 10px 20px;
+      background: #111;
+      color: #0ff;
+      border: 2px solid #0ff;
+      border-radius: 8px;
       cursor: pointer;
+      box-shadow: 0 0 10px #0ff;
+    }
+
+    #pauseBtn:hover {
+      background: #0ff;
+      color: #000;
     }
   </style>
 </head>
 <body>
+  <div id="leftPanel"></div>
+  <div id="rightPanel"></div>
   <canvas id="gameCanvas" width="800" height="500"></canvas>
-  <div id="scoreBoard">Player: 0 | AI: 0 | High Score: 0</div>
+  <div id="ui">Player: 0 | AI: 0 | High Score: 0</div>
   <button id="pauseBtn">Pause</button>
 
   <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
+
+    const ui = document.getElementById('ui');
+    const pauseBtn = document.getElementById('pauseBtn');
 
     let paddleWidth = 100, paddleHeight = 10, paddleSpeed = 8;
     let player = { x: canvas.width / 2 - paddleWidth / 2, y: canvas.height - 20, score: 0 };
@@ -56,34 +98,63 @@
       y: canvas.height / 2,
       radius: 10,
       speedX: 4,
-      speedY: 4
+      speedY: 4,
+      trail: []
     };
 
     let paused = false;
     const goalSound = new Audio("https://cdn.pixabay.com/audio/2021/08/04/audio_640cc74e28.mp3");
     let highScore = parseInt(localStorage.getItem("highScore")) || 0;
 
+    let mouse = { x: player.x + paddleWidth / 2, y: player.y };
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+    });
+    canvas.addEventListener('touchmove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.touches[0].clientX - rect.left;
+    });
+
+    pauseBtn.onclick = () => {
+      paused = !paused;
+      pauseBtn.innerText = paused ? 'Resume' : 'Pause';
+    };
+
     function drawPaddle(x, y, color) {
       ctx.beginPath();
       ctx.shadowColor = color;
-      ctx.shadowBlur = 15;
+      ctx.shadowBlur = 20;
       ctx.fillStyle = color;
       ctx.fillRect(x, y, paddleWidth, paddleHeight);
       ctx.shadowBlur = 0;
     }
 
     function drawPuck() {
+      // Trail
+      puck.trail.push({ x: puck.x, y: puck.y });
+      if (puck.trail.length > 10) puck.trail.shift();
+
+      for (let i = 0; i < puck.trail.length; i++) {
+        const t = puck.trail[i];
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, puck.radius * (i / puck.trail.length), 0, 2 * Math.PI);
+        ctx.fillStyle = `rgba(255,255,255,${i / puck.trail.length})`;
+        ctx.fill();
+      }
+
+      // Puck
       ctx.beginPath();
-      ctx.arc(puck.x, puck.y, puck.radius, 0, Math.PI * 2);
-      ctx.fillStyle = "#eee";
-      ctx.shadowColor = "#fff";
-      ctx.shadowBlur = 10;
+      ctx.arc(puck.x, puck.y, puck.radius, 0, 2 * Math.PI);
+      ctx.fillStyle = "#fff";
+      ctx.shadowColor = "#0ff";
+      ctx.shadowBlur = 15;
       ctx.fill();
       ctx.shadowBlur = 0;
     }
 
     function drawCenterLine() {
-      ctx.strokeStyle = '#444';
+      ctx.strokeStyle = '#0ff';
       ctx.lineWidth = 2;
       ctx.setLineDash([10, 15]);
       ctx.beginPath();
@@ -94,7 +165,7 @@
     }
 
     function drawBoundaries() {
-      ctx.strokeStyle = '#555';
+      ctx.strokeStyle = '#0ff';
       ctx.lineWidth = 4;
       ctx.strokeRect(0, 0, canvas.width, canvas.height);
     }
@@ -109,29 +180,13 @@
       ctx.shadowBlur = 0;
     }
 
-    let mouse = { x: player.x + paddleWidth / 2, y: player.y };
-    canvas.addEventListener('mousemove', e => {
-      const rect = canvas.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
-    });
-
-    canvas.addEventListener('touchmove', e => {
-      const rect = canvas.getBoundingClientRect();
-      mouse.x = e.touches[0].clientX - rect.left;
-    });
-
-    document.getElementById('pauseBtn').onclick = () => {
-      paused = !paused;
-      document.getElementById('pauseBtn').innerText = paused ? 'Resume' : 'Pause';
-    };
-
     function update() {
       if (paused) return;
 
       player.x = mouse.x - paddleWidth / 2;
       player.x = Math.max(0, Math.min(canvas.width - paddleWidth, player.x));
 
-      // Simple AI
+      // AI movement
       if (puck.y < canvas.height / 2) {
         if (puck.x < ai.x + paddleWidth / 2) ai.x -= paddleSpeed / 1.5;
         else ai.x += paddleSpeed / 1.5;
@@ -141,23 +196,20 @@
       puck.x += puck.speedX;
       puck.y += puck.speedY;
 
-      // Wall collision
+      // Wall bounce
       if (puck.x - puck.radius < 0 || puck.x + puck.radius > canvas.width) puck.speedX *= -1;
 
-      // Paddle collision
-      if (puck.y + puck.radius > player.y &&
-          puck.x > player.x && puck.x < player.x + paddleWidth) {
+      // Paddle bounce
+      if (puck.y + puck.radius > player.y && puck.x > player.x && puck.x < player.x + paddleWidth) {
         puck.speedY *= -1;
         puck.y = player.y - puck.radius;
       }
-
-      if (puck.y - puck.radius < ai.y + paddleHeight &&
-          puck.x > ai.x && puck.x < ai.x + paddleWidth) {
+      if (puck.y - puck.radius < ai.y + paddleHeight && puck.x > ai.x && puck.x < ai.x + paddleWidth) {
         puck.speedY *= -1;
         puck.y = ai.y + paddleHeight + puck.radius;
       }
 
-      // Goal
+      // Scoring
       if (puck.y - puck.radius <= 0) {
         player.score++;
         goalSound.play();
@@ -168,7 +220,7 @@
         resetPuck();
       }
 
-      // High score
+      // Save high score
       if (player.score > highScore) {
         highScore = player.score;
         localStorage.setItem("highScore", highScore);
@@ -179,6 +231,7 @@
       puck.x = canvas.width / 2;
       puck.y = canvas.height / 2;
       puck.speedY *= -1;
+      puck.speedX = (Math.random() > 0.5 ? 1 : -1) * 4;
     }
 
     function draw() {
@@ -189,7 +242,7 @@
       drawPaddle(ai.x, ai.y, "#f00");
       drawPuck();
       drawCustomCursor();
-      document.getElementById('scoreBoard').textContent = `Player: ${player.score} | AI: ${ai.score} | High Score: ${highScore}`;
+      ui.textContent = `Player: ${player.score} | AI: ${ai.score} | High Score: ${highScore}`;
     }
 
     function loop() {
