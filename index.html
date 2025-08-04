@@ -2,211 +2,239 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Neo Air Hockey AI</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
     html, body {
       margin: 0;
       padding: 0;
-      background: #000;
       overflow: hidden;
-      font-family: sans-serif;
+      background: #000;
+      font-family: Arial, sans-serif;
+      cursor: url('https://cur.cursors-4u.net/sports/spo-3/spo263.cur'), auto;
     }
+
     canvas {
       display: block;
-      background: radial-gradient(#111, #000);
+      background: linear-gradient(45deg, #0a0a0a, #111);
     }
+
     #ui {
       position: absolute;
       top: 10px;
       left: 10px;
-      color: white;
       z-index: 2;
+      color: #fff;
     }
-    #ui button {
+
+    button {
+      padding: 8px 12px;
+      margin: 5px;
       background: #222;
+      color: #fff;
       border: 1px solid #555;
-      color: white;
-      padding: 6px 10px;
-      margin-right: 8px;
       cursor: pointer;
     }
-    #scoreDisplay {
-      font-size: 18px;
-      margin-bottom: 10px;
+
+    button:hover {
+      background: #444;
+    }
+
+    #scoreBoard {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      color: #fff;
+      font-size: 16px;
     }
   </style>
 </head>
 <body>
   <div id="ui">
-    <div id="scoreDisplay">Player: 0 | AI: 0</div>
     <button onclick="togglePause()">⏯ Pause/Play</button>
-    <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
+    <button onclick="resetGame()">🔁 Restart</button>
   </div>
-  <canvas id="game"></canvas>
+  <div id="scoreBoard">Player: 0 | AI: 0 | High Score: 0</div>
+  <canvas id="gameCanvas"></canvas>
 
   <script>
-    const canvas = document.getElementById("game");
+    const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
-    let width, height;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-    let playerScore = parseInt(localStorage.getItem("playerScore")) || 0;
-    let aiScore = parseInt(localStorage.getItem("aiScore")) || 0;
+    const paddleWidth = 20, paddleHeight = 100;
+    const puckSize = 20;
 
     let paused = false;
+    let playerScore = 0, aiScore = 0;
+    let highScore = parseInt(localStorage.getItem("highScore")) || 0;
 
-    const paddle = {
-      x: 100,
-      y: 0,
-      r: 25,
-      color: "#00f"
+    const player = {
+      x: 30,
+      y: canvas.height / 2 - paddleHeight / 2,
+      width: paddleWidth,
+      height: paddleHeight,
+      color: "#00BFFF"
     };
 
     const ai = {
-      x: 100,
-      y: 0,
-      r: 25,
-      color: "#f00"
+      x: canvas.width - 50,
+      y: canvas.height / 2 - paddleHeight / 2,
+      width: paddleWidth,
+      height: paddleHeight,
+      color: "#FF3E3E"
     };
 
     const puck = {
-      x: 0,
-      y: 0,
-      r: 15,
-      color: "#0f0",
-      dx: 4,
-      dy: 4
+      x: canvas.width / 2,
+      y: canvas.height / 2,
+      size: puckSize,
+      dx: 6 * (Math.random() > 0.5 ? 1 : -1),
+      dy: 6 * (Math.random() > 0.5 ? 1 : -1),
+      color: "#fff"
     };
 
-    function resize() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-      paddle.y = height - 100;
-      ai.y = 100;
-      puck.x = width / 2;
-      puck.y = height / 2;
+    function drawGlowingRect(x, y, width, height, color) {
+      ctx.save();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, width, height);
+      ctx.restore();
     }
 
-    function drawCircle(x, y, r, color, glow = 20) {
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = color;
+    function drawGlowingPuck(x, y, size, color) {
+      ctx.save();
       ctx.shadowColor = color;
-      ctx.shadowBlur = glow;
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, size / 2, 0, Math.PI * 2);
       ctx.fill();
-      ctx.closePath();
+      ctx.restore();
     }
 
     function drawCenterLine() {
+      ctx.strokeStyle = "#444";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([15, 10]);
       ctx.beginPath();
-      ctx.setLineDash([12, 18]);
-      ctx.moveTo(0, height / 2);
-      ctx.lineTo(width, height / 2);
-      ctx.strokeStyle = "rgba(255, 0, 0, 0.8)";
-      ctx.lineWidth = 3;
-      ctx.shadowColor = "red";
-      ctx.shadowBlur = 15;
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    function moveAI() {
-      const targetX = puck.x;
-      ai.x += (targetX - ai.x) * 0.05;
+    function playSound(type) {
+      const sound = new Audio(type === 'goal'
+        ? 'https://freesound.org/data/previews/337/337049_3231594-lq.mp3'
+        : 'https://freesound.org/data/previews/18/18500_1058-lq.mp3');
+      sound.volume = 0.4;
+      sound.play();
     }
 
-    function updatePuck() {
+    function update() {
+      if (paused) return;
+
       puck.x += puck.dx;
       puck.y += puck.dy;
 
-      if (puck.x - puck.r < 0 || puck.x + puck.r > width) puck.dx *= -1;
-
-      if (puck.y - puck.r < 0) {
-        playerScore++;
-        saveScores();
-        resetPuck();
-        goalSound.play();
+      if (puck.y < 0 || puck.y > canvas.height) {
+        puck.dy *= -1;
       }
-      if (puck.y + puck.r > height) {
+
+      if (
+        puck.x < player.x + player.width &&
+        puck.y > player.y &&
+        puck.y < player.y + player.height
+      ) {
+        puck.dx *= -1;
+        puck.x = player.x + player.width;
+        playSound('hit');
+      }
+
+      if (
+        puck.x + puck.size > ai.x &&
+        puck.y > ai.y &&
+        puck.y < ai.y + ai.height
+      ) {
+        puck.dx *= -1;
+        puck.x = ai.x - puck.size;
+        playSound('hit');
+      }
+
+      if (puck.x < 0) {
         aiScore++;
-        saveScores();
         resetPuck();
-        goalSound.play();
+        playSound('goal');
+      } else if (puck.x > canvas.width) {
+        playerScore++;
+        if (playerScore > highScore) {
+          highScore = playerScore;
+          localStorage.setItem("highScore", highScore);
+        }
+        resetPuck();
+        playSound('goal');
       }
 
-      // Paddle collision
-      [paddle, ai].forEach(pad => {
-        let dx = puck.x - pad.x;
-        let dy = puck.y - pad.y;
-        let distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance < puck.r + pad.r) {
-          puck.dy *= -1;
-          hitSound.play();
-        }
-      });
-    }
+      const aiCenter = ai.y + ai.height / 2;
+      if (aiCenter < puck.y - 35) ai.y += 6;
+      else if (aiCenter > puck.y + 35) ai.y -= 6;
 
-    function resetPuck() {
-      puck.x = width / 2;
-      puck.y = height / 2;
-      puck.dx = 4 * (Math.random() > 0.5 ? 1 : -1);
-      puck.dy = 4 * (Math.random() > 0.5 ? 1 : -1);
+      ai.y = Math.max(0, Math.min(canvas.height - ai.height, ai.y));
+      player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
     }
 
     function draw() {
-      ctx.clearRect(0, 0, width, height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawCenterLine();
-      drawCircle(paddle.x, paddle.y, paddle.r, paddle.color);
-      drawCircle(ai.x, ai.y, ai.r, ai.color);
-      drawCircle(puck.x, puck.y, puck.r, puck.color);
+      drawGlowingRect(player.x, player.y, player.width, player.height, player.color);
+      drawGlowingRect(ai.x, ai.y, ai.width, ai.height, ai.color);
+      drawGlowingPuck(puck.x, puck.y, puck.size, "#ffffff");
     }
 
     function loop() {
-      if (!paused) {
-        moveAI();
-        updatePuck();
-        draw();
-      }
+      update();
+      draw();
+      document.getElementById('scoreBoard').textContent =
+        `Player: ${playerScore} | AI: ${aiScore} | High Score: ${highScore}`;
       requestAnimationFrame(loop);
+    }
+
+    function resetPuck() {
+      puck.x = canvas.width / 2;
+      puck.y = canvas.height / 2;
+      puck.dx *= -1;
+      puck.dy = 6 * (Math.random() > 0.5 ? 1 : -1);
+    }
+
+    function resetGame() {
+      playerScore = 0;
+      aiScore = 0;
+      resetPuck();
     }
 
     function togglePause() {
       paused = !paused;
     }
 
-    function toggleFullscreen() {
-      if (!document.fullscreenElement) {
-        canvas.requestFullscreen().catch(err => {
-          alert(`Error: ${err.message}`);
-        });
-      } else {
-        document.exitFullscreen();
-      }
-    }
-
-    function saveScores() {
-      localStorage.setItem("playerScore", playerScore);
-      localStorage.setItem("aiScore", aiScore);
-      document.getElementById("scoreDisplay").innerText = `Player: ${playerScore} | AI: ${aiScore}`;
-    }
-
-    window.addEventListener("resize", resize);
-    resize();
-    resetPuck();
-    saveScores();
-    loop();
-
-    // Touch controls
-    canvas.addEventListener("touchmove", e => {
-      paddle.x = e.touches[0].clientX;
+    window.addEventListener("keydown", e => {
+      const speed = 20;
+      if (e.key === "ArrowUp") player.y -= speed;
+      if (e.key === "ArrowDown") player.y += speed;
     });
 
-    // Sound effects
-    const hitSound = new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_a3160ba638.mp3");
-    const goalSound = new Audio("https://cdn.pixabay.com/audio/2022/02/15/audio_d753e54b87.mp3");
+    canvas.addEventListener("touchmove", (e) => {
+      const touch = e.touches[0];
+      player.y = touch.clientY - player.height / 2;
+    });
+
+    window.addEventListener("resize", () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+
+    loop();
   </script>
 </body>
 </html>
